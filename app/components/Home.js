@@ -1,4 +1,3 @@
-// @flow
 import React, { Component } from 'react';
 import { Link } from 'react-router-dom';
 import routes from '../constants/routes';
@@ -12,7 +11,7 @@ import eSettings from "electron-settings";
 import os from 'os';
 
 import {PlayArrow, Pause, SkipNext, SkipPrevious, QueueMusic, Settings, Shuffle, Repeat} from '@material-ui/icons'
-import { settings } from 'cluster';
+
 
 export default class Home extends Component {
 
@@ -30,9 +29,10 @@ export default class Home extends Component {
     list: [],
     seeking: false,
     hideList: false,
+    prevShuffleSong: 0,
+    image: null
   }
  
-
   handlePause() {
     if(this.state.playing) {
       this.setState({
@@ -61,11 +61,10 @@ export default class Home extends Component {
       if(e.keyCode == 32 && e.target == document.body) {e.preventDefault(); this.handlePause()}
       if(e.keyCode == 37) {this.handlePrevious()}
       if(e.keyCode == 39) {this.handleNext()}
-      if(e.keyCode == 38) {
-        e.preventDefault;
-        this.state.volume < 1 ? this.setState({volume : this.state.volume + 0.05}) : this.state.volume
-      }
-      if(e.keyCode == 40) {this.state.volume > 0 ? this.setState({volume : this.state.volume - 0.05}) : this.state.volume}
+      if(e.keyCode == 38 && e.target == document.body) {e.preventDefault();this.state.volume < 1 ? this.setState({volume : this.state.volume + 0.05}) : this.state.volume}
+      if(e.keyCode == 40 && e.target == document.body) {e.preventDefault();this.state.volume > 0 ? this.setState({volume : this.state.volume - 0.05}) : this.state.volume}
+      if(e.keyCode == 88) {this.toggleShuffle()}
+      if(e.keyCode == 90) {this.toggleLoop()}
     })
 
     window.addEventListener("beforeunload", (e) => {
@@ -125,17 +124,19 @@ export default class Home extends Component {
       this.setState({songIndex: 0})
     } else {  this.setState({songIndex: eSettings.get('playerSettings.lastSong')})}
 
-    // if(!eSettings.has('playerSettings.volume')) {
-    //   this.setState({volume: 50})
-    // } else {  this.setState({volume: eSettings.get('playerSettings.volume')})}
+    if(!eSettings.has('playerSettings.volume')) {
+      this.setState({volume: 0.5})
+    } else {  this.setState({volume: eSettings.get('playerSettings.volume')})}
     
 }
   
   parseMetadata() {
     NodeID3.read(this.state.songs[this.state.songIndex], (err, tags) => {
+      console.log(tags)
       this.setState({
         title: tags.title,
-        artist: tags.artist
+        artist: tags.artist,
+        image: tags.image.imageBuffer
       })
     })
   }
@@ -160,22 +161,22 @@ export default class Home extends Component {
         } else if (this.state.songIndex == this.state.songs.length - 1) {
           this.setState({songIndex: 0})
         }  
-      } else {
+      } else {  
+        this.setState({prevShuffleSong: this.state.songIndex})
         this.setState({songIndex: random})
       }
+      console.log(this.state)
+
   }
 
   handlePrevious() {
-    if(this.state.songIndex > 0) {
-      this.setState({songIndex: this.state.songIndex - 1})
+    if(!this.state.shuffle) {
+      if(this.state.songIndex > 0) {
+        this.setState({songIndex: this.state.songIndex - 1})
+      }
+    } else {
+      this.setState({songIndex: this.state.prevShuffleSong})
     }
-  }
-
-  updatePosition() {
-    setTimeout(() => {
-      this.setState({position: Sound.position / 1000})
-      console.log(this.state.position)
-    }, 1000);
   }
 
   setSongIndex(id) {
@@ -200,7 +201,7 @@ export default class Home extends Component {
     let target = document.getElementById("seeker")
     let val = Math.ceil(rplayer.playedSeconds) / target.max * 100;
     target.style.backgroundImage = '-webkit-gradient(linear, left top, right top, color-stop(' + val + '%, #fca311), color-stop(' + val + '%, rgba(68,52,15,0.5)))';
-    console.log(this.state.played + "//" + val)
+    // console.log(this.state.pla yed + "//" + val)
   }
 
   onSeekMouseDown = e => {
@@ -209,6 +210,9 @@ export default class Home extends Component {
 
   onSeekChange = e => {
     this.setState({ played: Math.round(e.target.value) })
+    let target = document.getElementById("seeker")
+    let val = Math.floor(this.state.played) / target.max * 100;
+    target.style.backgroundImage = '-webkit-gradient(linear, left top, right top, color-stop(' + val + '%, #fca311), color-stop(' + val + '%, rgba(68,52,15,0.5)))'; 
   }
 
   onSeekMouseUp = e => {
@@ -237,6 +241,10 @@ export default class Home extends Component {
       return (<li key={index} onClick={this.setSongIndex.bind(this, index)} style={{color: this.state.songIndex == index ? '#fca311' : 'white'}}>{index + 1}. {song}</li>)
     })
 
+    const base64img = btoa(new Uint8Array(this.state.image).reduce((data,byte)=>(data.push(String.fromCharCode(byte)),data),[]).join(''))
+    const imgConstructor = 'data:image/jpeg;base64,' + base64img
+    // console.log(imgConstructor)
+
     let list;
 
     if(!this.state.hideList){
@@ -252,8 +260,11 @@ export default class Home extends Component {
 
           <div className={styles.btnGroup}>
             <div className={styles.titleSeq}>
-              <p style={{backgroundColor: 'transparent', fontSize: '20px'}}>{this.state.title}</p>
-              <p style={{backgroundColor: 'transparent'}}>{this.state.artist}</p>
+              <img style={{height: '100px', width: '100px'}} src={imgConstructor} ></img>
+              <div className={styles.textTitle}>
+                <p style={{backgroundColor: 'transparent', fontSize: '20px'}}>{this.state.title}</p>
+                <p style={{backgroundColor: 'transparent'}}>{this.state.artist}</p>
+              </div>
             </div>
             <div className={styles.overlap}>
               <div className={styles.controlGroup}>
@@ -271,7 +282,7 @@ export default class Home extends Component {
                 <button 
                     type="button" 
                     onClick={this.handlePause.bind(this)}> 
-                    {this.state.playing ? <Pause /> : <PlayArrow />}  
+                    {this.state.playing ? <Pause style={{color: '#fca311'}} /> : <PlayArrow/>}  
                 </button>
                 {/* <button 
                     type="button" 
@@ -329,8 +340,8 @@ export default class Home extends Component {
               <input 
                   id="volumeRange"
                   type="range" 
-                  min="0" 
-                  max="1" 
+                  min={0}
+                  max={1} 
                   step="0.01"
                   value={this.state.volume} 
                   onChange={this.handleVolume.bind(this)}>
